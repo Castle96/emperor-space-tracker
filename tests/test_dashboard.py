@@ -770,3 +770,41 @@ def test_the_signed_in_as_block_escapes_the_username() -> None:
                 if "identity." in rendered and "_esc" not in rendered:
                     offenders.append(f"line {node.lineno}: {rendered}")
     assert not offenders, "unescaped identity value in raw HTML: " + "; ".join(offenders)
+
+
+def test_a_refused_caller_never_falls_through_to_the_success_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """None means "auth disabled", so a refusal must not be able to return it.
+
+    ``st.stop()`` raises inside a Streamlit run, which is what currently halts a
+    refused caller before the store is opened. Outside a run there is no
+    runtime to raise from: a bare call falls straight through, hands back None,
+    and every caller reads that as authentication being switched off - so the
+    store opens and the dashboard renders for the caller just refused.
+
+    A silent fail-open is worse than a crash, so the refusal path has to fail
+    loudly when the halt it relies on is unavailable.
+    """
+    pytest.importorskip("streamlit")
+    from emperor_space_tracker.config import load_config
+    from emperor_space_tracker.dashboard import app as app_mod
+
+    config = load_config()
+
+    # A correctly signed request with no authenticated identity, which is what
+    # the proxy sends when its own authentication has not run.
+    monkeypatch.setattr(app_mod, "_request_headers", lambda: {"X-Emperor-User": ""})
+    monkeypatch.setenv("EST_DASHBOARD_PROXY_SECRET", "shared-secret-for-this-test")
+
+    # Either halt is acceptable: StopException is what a real Streamlit run
+    # raises, and the RuntimeError is the guard for when it cannot. What is not
+    # acceptable is returning None, which is the fail-open this test exists to
+    # catch, so the return value is asserted rather than assumed.
+    try:
+        result = app_mod._require_auth(config)
+    except BaseException as exc:  # StopException is not an Exception
+        if type(exc).__name__ != "StopException":
+            assert "refused an unauthenticated dashboard request" in str(exc)
+        return
+    pytest.fail(f"refusal fell through and returned {result!r} instead of halting")

@@ -1824,6 +1824,19 @@ def _require_auth(config: Config) -> Any | None:
             "connection. A direct connection carries no such proof and is refused."
         )
         st.stop()
+        # st.stop() raises StopException inside a Streamlit run, so control never
+        # reaches this line and the store is never opened for a refused caller.
+        #
+        # It is here because the alternative is a silent fail-open. A bare call
+        # to this function - a test, a script runner - has no Streamlit runtime to
+        # raise from, and st.stop() is then a no-op, so execution would fall
+        # through to `return identity` below and hand back None. Every caller
+        # reads None as "authentication is switched off" and would open the
+        # store and render the dashboard for the caller just refused. Failing
+        # loudly is the correct outcome if that ever happens.
+        raise RuntimeError(
+            "refused an unauthenticated dashboard request: st.stop() did not halt"
+        )
 
     _LOG.info("dashboard access granted: user=%s role=%s via %s",
               identity.username, identity.role, identity.source)
