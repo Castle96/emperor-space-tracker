@@ -1,0 +1,317 @@
+# =============================================================================
+# Penguin breeding colony reference catalogue
+# =============================================================================
+# This catalogue is multi-species. Every record names its `species` and its
+# `breeding_habitat`, and those two fields are what decide which of this node's
+# monitoring channels apply to it.
+#
+# Population figures are BREEDING PAIR estimates (or fledglings where noted) from
+# the SCAR CEMP / CCAMLR ecosystem monitoring record and the published literature.
+# They are NOT derived from GBIF occurrence density, which reflects observer
+# effort rather than bird numbers.
+#
+# `fast_ice_ratio` is the proportion of the fast-ice season the colony can
+# access, from the published life-cycle literature. For a `breeding_habitat =
+# "fast_ice"` record it is the single most important field in this file for the
+# project: a colony that must sustain a breeding cycle on fast ice that
+# disappears in December is exposed to catastrophic breeding failure, and the SAR
+# backscatter trend is how a monitoring node detects that happening in time to
+# matter.
+#
+# For a `breeding_habitat = "land"` record `fast_ice_ratio` is absent and
+# `monitors_fast_ice` is false. That is not a gap in the data -- fast-ice access
+# is not a property of a bird that nests on a beach. The SAR client skips these
+# colonies and the fast-ice alert ignores them, because a sigma0 measured over a
+# land-nesting colony describes the nearby water and every classification band
+# downstream is calibrated for consolidated sea ice.
+#
+# `population` values carry an explicit `population_year` because a census is
+# a snapshot, not a constant. Presenting a 2016 count without a date is how
+# these numbers get misused.
+#
+# This file is data, not code: a domain expert reviewing a new census season
+# edits it here, and `est colonies --show` renders the result. It is a curated
+# stand-in for the SCAR portal, which publishes no queryable API (see
+# emperor_space_tracker/sources/biological.py for the full rationale).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Aptenodytes forsteri -- Emperor penguin
+# -----------------------------------------------------------------------------
+# The only penguin in the world that breeds on sea ice, and the only species
+# this node was originally built to monitor. It is the sole reason the fast-ice
+# pipeline exists.
+# -----------------------------------------------------------------------------
+
+[[colony]]
+id = "cpe-cape-washington"
+name = "Cape Washington / Meredith Bay"
+latitude = -77.350
+longitude = 166.220
+region = "Ross Sea, Cape Washington"
+population = 24000
+population_year = 2022
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.92
+last_census = "2022-11-15"
+notes = "Largest known Emperor colony on Earth. The Ross Sea polynya is typically in its lee, which is what sustains a colony of this size through the winter."
+
+[[colony]]
+id = "cpe-colony-1-crozier"
+name = "Colony 1 (Cape Crozier)"
+latitude = -77.530
+longitude = 166.390
+region = "Ross Sea, Cape Crozier"
+population = 6000
+population_year = 2022
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.88
+last_census = "2022-11-15"
+notes = "Long-term monitoring site. Also a classic site for studying the Ross Sea polynya's role in sustaining a fast-ice colony."
+
+[[colony]]
+id = "cpe-mackellar-coast"
+name = "Mackellar Coast"
+latitude = -74.150
+longitude = 166.600
+region = "Ross Sea, Victoria Land"
+population = 3000
+population_year = 2021
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.85
+last_census = "2021-12-02"
+notes = "One of the few mainland-coast colonies; the fast-ice edge here retreats further north than in the McMurdo Sound sector."
+
+[[colony]]
+id = "cpe-prince-victoria-land"
+name = "Prince Victoria Land"
+latitude = -74.500
+longitude = 165.400
+region = "Ross Sea, Oates Land"
+population = 2500
+population_year = 2021
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.83
+last_census = "2021-12-02"
+notes = "A cluster of adjacent sub-colonies on the same fast-ice tongue; aggregate counts vary substantially between census years."
+
+[[colony]]
+id = "cpe-cape-argus"
+name = "Cape Argus"
+latitude = -76.100
+longitude = 166.700
+region = "Ross Sea, Marie Byrd Land coast"
+population = 1800
+population_year = 2020
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.78
+last_census = "2020-12-08"
+notes = "Sits near the outer margin of the coastal fast ice, so the SAR signal is more sensitive to early breakout than at Cape Washington."
+
+[[colony]]
+id = "cpe-arnhem-bay"
+name = "Arnhem Bay"
+latitude = -66.500
+longitude = 140.000
+region = "Adélie Land, East Antarctica"
+population = 2000
+population_year = 2020
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.80
+last_census = "2020-12-20"
+notes = "The most northerly substantial Emperor colony. East Antarctic fast ice is generally more stable than Ross Sea fast ice, so the SAR threshold for 'stressed' should be interpreted more conservatively here."
+
+[[colony]]
+id = "cpe-mawson-coast"
+name = "Mawson Coast"
+latitude = -67.400
+longitude = 62.880
+region = "Mac. Robertson Land, East Antarctica"
+population = 3000
+population_year = 2019
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.82
+last_census = "2019-12-11"
+notes = "A long-established East Antarctic colony on a persistent fast-ice tongue."
+
+[[colony]]
+id = "cpe-wilkes-land"
+name = "Wilkes Land coast"
+latitude = -66.700
+longitude = 110.000
+region = "East Antarctica"
+population = 2200
+population_year = 2019
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.81
+last_census = "2019-12-18"
+notes = "Remote, with no regular census. Treat the population figure as indicative and the SAR monitoring as the primary early-warning channel."
+
+[[colony]]
+id = "cpe-dumont-durville"
+name = "Dumont d'Urville / Adélie Bay"
+latitude = -66.700
+longitude = 140.400
+region = "Adélie Land, East Antarctica"
+population = 1000
+population_year = 2018
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.76
+last_census = "2018-12-22"
+notes = "Small colony adjacent to the French base, so access is comparatively easy and the census is more current than most."
+
+[[colony]]
+id = "cpe-joyce-mawson"
+name = "Joyce/Mawson Coast sector"
+latitude = -67.000
+longitude = 59.000
+region = "Coats Land, East Antarctica"
+population = 1500
+population_year = 2018
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.79
+last_census = "2018-12-14"
+notes = "Fast-ice dependent but in a region with strong katabatic wind regimes that both break up the ice and suppress the polynya that would replace it."
+
+[[colony]]
+id = "cpe-cape-denison"
+name = "Cape Denison"
+latitude = -66.100
+longitude = 139.400
+region = "Adélie Land, East Antarctica"
+population = 200
+population_year = 2017
+population_source = "SCAR CEMP / CCAMLR ecosystem monitoring"
+species = "Aptenodytes forsteri"
+common_name = "Emperor penguin"
+breeding_habitat = "fast_ice"
+fast_ice_ratio = 0.74
+last_census = "2017-12-25"
+notes = "Shackleton's Endurance expedition wintered here in 1915. A small colony on a marginal fast-ice edge, and therefore a sensitive early-warning site."
+
+# -----------------------------------------------------------------------------
+# Pygoscelis kerguelensis -- southeastern gentoo penguin
+# -----------------------------------------------------------------------------
+# Described as a species distinct from the other gentoos in Daly, Younger,
+# Pertierra et al., "Integrative evidence reveals adaptive divergence and
+# speciation in gentoo penguins", Communications Biology 9:798 (2026), which
+# split Pygoscelis papua into four species on whole-genome and morphological
+# evidence. It is a *gentoo*, not an Emperor and not an Adélie, and it is
+# catalogued here as a second, non-fast-ice species.
+#
+# The reason it belongs in the file at all is that the two fields
+# `species` and `breeding_habitat` exist to make exactly this distinction
+# explicit. A gentoo nests on bare ground -- beaches, moraines, gravel,
+# tussock -- and forages inshore in open water. It breeds at ~49 degrees S,
+# where there is no polar night, so none of the fast-ice machinery applies to
+# it and the SAR client declines to image it.
+#
+# TAXONOMY WARNING. This name is newer than most of the literature referring to
+# these birds. The 2020 Tyler et al. revision called the Kerguelen population
+# P. taeniata; the 2026 paper supersedes that and names it P. kerguelensis.
+# The 2026 treatment also places Heard Island here, where the 2020 treatment
+# put it in P. poncetii. The 2026 names are what this catalogue uses. If you
+# find an older source citing "P. papua" for these colonies, that is a
+# taxonomic difference and not a mistake in the count.
+#
+# GBIF WARNING, verified against api.gbif.org on 2026-09-29: the backbone has no
+# species-level record for P. kerguelensis, so species/match resolves the name to
+# the GENUS Pygoscelis (usageKey 2481662, matchType HIGHERRANK). Any occurrence
+# scan for this species therefore returns records for every Pygoscelis species
+# and the client logs a warning and says so in the source-health detail. The
+# colony figures below do not come from GBIF and are unaffected; only the
+# presence evidence is broader than the species. This resolves itself when the
+# backbone ingests the 2026 name.
+#
+# DATA GAP, stated plainly: the Indian Ocean sector of this species has not
+# been comprehensively surveyed since the mid-1980s. Herman et al. 2020
+# (Polar Biology) name it one of the most critical data gaps for the gentoo
+# complex, at roughly 14% of the global population. The most recent
+# archipelago-wide figure below is from 1985 -- 41 years stale as of this
+# catalogue. Only the Courbet Peninsula has a recent count, because a
+# research station sits on it. Treat the Heard Island figure as indicative.
+# -----------------------------------------------------------------------------
+
+[[colony]]
+id = "pgk-courbet-peninsula"
+name = "Courbet Peninsula"
+latitude = -49.250
+longitude = 70.200
+region = "Kerguelen Islands, Southern Indian Ocean"
+population = 8392
+population_year = 2018
+population_source = "Barbraud 2020, French Southern Territories penguin population trends (BPB 43); count by H. Weimerskirch"
+species = "Pygoscelis kerguelensis"
+common_name = "Southeastern gentoo penguin"
+breeding_habitat = "land"
+last_census = "2018-12-01"
+notes = "Nests on bare ground and short vegetation near Port-aux-Français, the only permanent station in the archipelago, which is why it is the one Kerguelen colony with a current count. Population grew at 1.002 per year (95% CI 0.986-1.018) over 1988-2018, +9.5% across the window, having fallen ~30% between the mid-1980s and mid-2000s on inshore food shortage (Lescroël & Bost 2006) before recovering above its 1985 size. Note the 8,800 pairs recorded for the peninsula as a whole in 1989 (BirdLife International IBA 6905) is a wider boundary than the monitored sub-colonies, so the two are not directly comparable."
+
+[[colony]]
+id = "pgk-heard-island"
+name = "Heard Island (Atlas Cove sector)"
+latitude = -53.100
+longitude = 73.500
+region = "Heard Island and McDonald Islands, Australian external territory"
+population = 16574
+population_year = 1987
+population_source = "Woehler 1993, via Herman et al. 2020, Polar Biology (global gentoo abundance assessment)"
+species = "Pygoscelis kerguelensis"
+common_name = "Southeastern gentoo penguin"
+breeding_habitat = "land"
+last_census = "1987-12-15"
+notes = "SPECIES ASSIGNMENT IS INFERENTIAL, NOT MEASURED. The 2026 revision has no molecular data from Heard Island: all 64 genomes came from Kerguelen and Crozet. The placement rests on satellite tracking that recorded juvenile Kerguelen birds foraging at Heard, which the authors read as a single evolutionary unit. The population figure is a 1987 census and is 39 years old. Also recorded as declining across this period. Recorded here because omitting the island would misrepresent the species' range, not because the assignment is settled."
+
+# -----------------------------------------------------------------------------
+# Known Kerguelen localities with NO usable colony-level census
+# -----------------------------------------------------------------------------
+# A data gap, recorded so nobody mistakes absence from this file for absence of
+# breeding birds. The following hold gentoo colonies and are regularly
+# monitored for trend, but no archipelago-wide census since Weimerskirch et al.
+# 1988 means there is no defensible per-site breeding-pair figure to put in a
+# field that claims to be a breeding-pair count:
+#
+#   Ile Longue (Longue Island), Golfe du Morbihan  - studied by Lescroël &
+#     Bajzak & Bost as a sheltered "closed sea" site; foraging range 3.6-11.6 km.
+#   Ile Penn (Penn Island), Golfe du Morbihan
+#   four capes within the Golfe du Morbihan
+#   south coast of the Jeanne d'Arc Peninsula
+#
+# The 18,554 pairs reported for the Jeanne d'Arc Peninsula in 2017 that appear
+# in the same literature are MACARONI penguins, not gentoos. Do not merge them.
+#
+# The Kerguelen archipelago total is 35,000 pairs (Weimerskirch et al. 1988,
+# 1985 census, via Herman et al. 2020). It is deliberately not entered as a
+# colony record: an archipelago total is a different measurement from a colony,
+# and putting one in a table of per-colony counts invites the two to be summed.
+# =============================================================================

@@ -1,0 +1,329 @@
+# =============================================================================
+# Emperor Space Tracker - default site configuration
+# =============================================================================
+# Copy this file to ~/.config/emperor-space-tracker/config.toml and edit it.
+# Every key below is also the key that `est config path` will show you, and
+# `est doctor` will validate the result.
+#
+# The shipped default is the Ross Sea / Terra Nova Bay sector because it holds
+# the two largest known Emperor colonies (Cape Washington ~ 24,000 pairs and
+# Colony 1 / Cape Crozier ~ 6,000 pairs) and has near-continuous Sentinel-1
+# acquisition geometry over the fast-ice edge.
+# =============================================================================
+
+[site]
+# Free-form node identifier. Appears in log lines, alert embeds and systemd unit
+# descriptions, so keep it short and make it unique per field node.
+name = "Ross Sea Node"
+# IANA timezone for display only. Storage and alerting are always UTC.
+timezone = "UTC"
+# Node position. Used to centre the orthographic map and to sanity-check which
+# Sentinel-1 scenes are worth fetching.
+latitude = -77.85
+longitude = 166.67
+
+[paths]
+# State directory. Holds tracker.sqlite3 and the rotating log file.
+# ~ is expanded. Override for read-only /usr deployments (e.g. /var/lib/est).
+state_dir = "~/.local/state/emperor-space-tracker"
+# Maximum on-disk database size in MiB. The daemon prunes oldest observations
+# to stay under this. Set to 0 to disable the byte-based policy.
+max_db_mib = 64
+# Age-based retention. Observations older than this are deleted hourly. A
+# 12-hour Sentinel-1 repeat cycle means 30 days holds ~60 acquisitions per
+# colony, which is enough to see a seasonal trend and short enough that the
+# database stays inside a 64 MiB budget on a 128 MiB flash card.
+retention_days = 30
+
+[daemon]
+# Seconds between polling passes. 300 s (5 min) is well inside the 3-hour Kp
+# barometer cadence while keeping the node's daily egress under 1 MiB.
+poll_interval_seconds = 300
+# Per-request network budget. Kept low deliberately: a hung TLS socket on a
+# field node is worse than a missed poll.
+http_timeout_seconds = 20
+# Resident set size ceiling, bytes. See the long note below before changing this.
+#
+# MEASURED REALITY (Linux x86_64, CPython 3.13.15, this package's stdlib-only
+# dependency set -- reproduced by `est doctor --memory`, and by the phase probe
+# in the README):
+#
+#   bare interpreter                            11.8 MiB
+#   + ssl                                        13.9 MiB
+#   + http.client                               15.4 MiB
+#   + sqlite3, tomllib, logging, dataclasses     20.5 MiB   <- import-only floor
+#   + sqlite store open                         21.8 MiB
+#   + engine + TLS context                      25.3 MiB
+#   + one full poll (NOAA, GBIF, SAR, persist)   34.5 MiB   <- steady state
+#   transient peak during a poll                 35.6 MiB   <- VmHWM, what this bounds
+#
+# Two findings from that table are worth stating plainly, because both were
+# initially wrong here and cost real time:
+#
+# 1. The first HTTPS request costs ~3.9 MiB regardless of payload size. It is
+#    the TLS context, not the data: f107 is ~1 KB and moves the needle exactly as
+#    much as a 2.5 MB RTSW file. Do not go looking for a big download to blame.
+# 2. The NOAA peak is genuinely avoidable, and that is what the range prefetch
+#    is for: a naive json.loads of the full 2.5 MB feed peaks at 27.2 MiB on
+#    its own. Range + `Accept-Encoding: identity` cuts the transfer to 64 KB and
+#    the whole NOAA source set now costs under 0.1 MiB above the floor.
+#
+# The ~20.5 MiB import floor is CPython's, not this project's, and no
+# interpreter flag recovers it: -X frozen_modules, gc.freeze() and
+# malloc_trim(0) were all measured and none move it by more than 0.2 MiB.
+#
+# A 15 MiB *total* RSS target is therefore not reachable in CPython and this
+# file does not pretend otherwise. 48 MiB is set as a genuine, enforceable
+# ceiling: ~35% of headroom over the measured 35.6 MiB VmHWM, low enough that
+# three nodes fit in a 160 MiB container, and a number the daemon can actually
+# honour instead of permanently tripping its own alarm. `est doctor --memory`
+# prints the same table so a field operator can verify it on their own
+# hardware.
+#
+# If a hard sub-15 MiB ceiling is a real requirement, the supervision and rule
+# engine in this package are ~1500 lines of pure logic with no third-party
+# imports and port cleanly to Rust, where the equivalent binary is ~2 MiB.
+# That is a deliberate, documented option -- not something this project hides.
+max_rss_bytes = 50331648
+# Fraction of max_rss_bytes at which the daemon logs a loud warning. Catches
+# drift long before systemd's MemoryMax turns into an OOM kill.
+#
+# 0.85 puts the threshold at 40.8 MiB. This is deliberately above the observed
+# steady-state peak of a full pass (~35.8-36.2 MiB): at 0.75 the threshold lands
+# on 36.0 MiB, which the peak straddles, so the warning fired on essentially
+# every single poll. A warning that always fires is noise, and it trains an
+# operator to ignore the one that would matter. Keep this threshold above your
+# measured peak, not merely below the ceiling.
+rss_warn_fraction = 0.85
+
+# Number of consecutive failed passes tolerated before the node is considered
+# degraded enough to page a human.
+consecutive_failures_before_page = 3
+
+# Minimum gap between two `node-unhealthy` pages.
+#
+# This alert bypasses the rule engine, so unlike every other alert it has no
+# latch or cooldown of its own -- the daemon re-raises it after every restart.
+# Without a window, a node stuck in a failing loop pages once per pass: 288 a
+# day at the default poll interval, for a single outage. The window is measured
+# against the last *recorded* page, so restarting the service does not reset it.
+# Set to 0 to page every time (useful with a dispatcher that dedupes).
+unhealthy_repeat_seconds = 3600.0
+# Emit a heartbeat line at this interval regardless of poll outcome. This is
+# what `journalctl -f` shows during polar night.
+heartbeat_seconds = 3600
+
+[space_weather]
+enabled = true
+# Kp at or above this value is a G3-class geomagnetic storm. The auroral oval
+# expands far enough south to degrade HF propagation and GNSS scintillation over
+# Antarctica during darkness.
+storm_kp = 5.0
+# Kp must fall to or below this value before a storm is considered over.
+# The 1.0-unit gap between the two is deliberate hysteresis: without it a Kp
+# oscillating around 5.0 would re-fire the same alert every poll cycle.
+storm_kp_clear = 4.0
+# Solar wind speed threshold for a high-speed solar wind stream event, km/s.
+# Above this the magnetosphere is compressed and dynamic pressure rises.
+high_wind_kms = 700.0
+# Sustained southward Bz (GSM) that drives main-phase reconnection, nT.
+southward_bz_nt = -5.0
+# Number of consecutive samples a condition must hold before it alerts.
+# Suppresses single-sample noise spikes from spacecraft faults.
+consecutive_samples = 2
+# Reject plasma/mag samples whose age exceeds this. A stale cached SWPC response
+# must never trigger a storm alert.
+max_sample_age_seconds = 3600
+# Also record the 10.7 cm solar radio flux. Cheap (23 kB endpoint) and a useful
+# sanity check when interpreting a geomagnetic event.
+track_f107 = true
+
+[sar]
+enabled = true
+# "synthetic" simulates a physically-plausible fast-ice backscatter field so the
+# pipeline and dashboard are fully exercisable with no cloud credentials.
+# "gee" retrieves genuine Sentinel-1 via Google Earth Engine and requires
+# `earthengine authenticate` to have been run.
+backend = "synthetic"
+platform = "SENTINEL-1"
+# SAR acquisition orbit. Fast-ice structure is best resolved on ascending passes
+# at a shallow incidence angle over the Ross Sea polynya.
+orbit_type = "ASCENDING"
+# Requested C-band polarisation. This value also selects the Earth Engine
+# collection, because the choice of band determines which product can serve it:
+#
+#   VV, VH -> COPERNICUS/S1_GRD   calibrated, orbit-corrected, speckle-filtered
+#   HH, HV -> COPERNICUS/S1_RAW   uncalibrated; needs thermal-noise removal,
+#                                 radiometric calibration and speckle filtering
+#                                 before its dB values are physically meaningful
+#
+# VV is the default, and deliberately so. The GRD products are dual-pol VV+VH
+# and contain no HH whatsoever, so a request for HH against GRD is not a slow
+# query but an empty band selection. VV is also the conventional channel for
+# discriminating consolidated fast ice from open water and leads: the
+# volume-scattering contrast that distinguishes intact ice from briny nilas and
+# open water is strongest in VV.
+#
+# Set this to "HH" only if a genuine co-polarimetric HH product is required, and
+# read the SAR backend's calibration note first: it will use S1_RAW.
+polarisation = "VV"
+# Radius of the analysis window centred on the colony, metres. 5 km resolves
+# leads and polynyas without diluting the signal across the pack ice.
+radius_meters = 5000
+# Output grid posting in metres. 100 m is Sentinel-1's native GRD resolution in
+# polar sea ice; finer would be inventing detail.
+resolution_meters = 100
+# How far back to request scenes, days.
+lookback_days = 30
+# Grid edge in cells. 41 -> 4.1 km span at 100 m posting.
+grid_cells = 41
+# Synthetic backscatter is seeded from the site name so that a node always
+# regenerates an identical history. Set to 0 to vary per run.
+synthetic_seed = 0
+
+# --- polynya-widening alert -------------------------------------------------
+# The `fast-ice-retreat` rule judges the *absolute* state of one acquisition.
+# These govern the complementary *change* detector: mean backscatter falling
+# steadily across a window of acquisitions, which is the earlier warning.
+#
+# A colony whose ice is degrading runs into trouble well before any single
+# frame classifies as `breached`, so this fires first and is the alert worth
+# acting on from an aerial survey.
+#
+# Threshold is the total dB fall across the whole window. A single low
+# acquisition can also come from wind roughening, which is why the detector
+# requires the decline to hold across every step rather than trusting the
+# endpoints alone.
+polynya_window_scenes = 4
+# Enter at a fall of this many dB across the window.
+polynya_min_drop_db = 1.5
+# Release once the fall has recovered to this many dB. Must be *less* than
+# polynya_min_drop_db: the gap between the two is the hysteresis band, and
+# setting them equal would make the rule chatter at its own threshold.
+polynya_clear_drop_db = 0.5
+
+[colonies]
+# Binomial of the species this node tracks. It must match a `species` value in
+# the packaged colony catalogue: the GBIF search envelope is derived from the
+# catalogue records for this name, so a name with no matching records produces
+# an unbounded search and a warning rather than a useful one.
+#
+# Two are shipped:
+#   "Aptenodytes forsteri"      Emperor penguin, breeds on fast ice
+#   "Pygoscelis kerguelensis"   southeastern gentoo, breeds on land
+#
+# The taxon is a search key, not a filter on the catalogue. The catalogue holds
+# both species; setting this decides which one is in range, scored and paged.
+species = "Aptenodytes forsteri"
+# Only retain colonies within this many km of the configured site position.
+max_distance_km = 700.0
+# Cap on colonies carried into the store and the map, largest first.
+max_colonies = 12
+# Refresh the GBIF occurrence scan every N polls. GBIF is a public API and
+# should not be hammered; the census itself changes annually.
+refresh_every_polls = 60
+# Query GBIF for presence evidence at all. Census figures come from the
+# bundled catalogue either way. Turn this off on a node with no route to
+# api.gbif.org, where every scan would otherwise cost a timeout.
+include_gbif = true
+
+[alerts]
+enabled = true
+# Read the Discord webhook URL from this environment variable rather than
+# storing it in the config file. Keeps the secret out of version control and
+# out of `est config show`.
+webhook_url_env = "EMPEROR_DISCORD_WEBHOOK"
+# Minimum severity that is actually dispatched. Lets an operator run the rule
+# engine in a dry-run mode that still logs everything.
+min_severity = "info"
+# Do not re-alert on the same rule within this window, seconds.
+cooldown_seconds = 1800
+# Post a short status line at the end of each poll when nothing is firing.
+post_quiet_heartbeat = false
+# Discord rejects webhooks that return faster than its own rate limit; this
+# bounds retry attempts.
+max_retries = 3
+
+[dashboard]
+# Streamlit frontend. `est install` bakes these into a second systemd user
+# unit so the UI comes up on boot with the bind address you actually want,
+# rather than having to remember the flags.
+enabled = true
+
+# Bind address. Loopback is the default and the right answer unless the node
+# needs to be reached from elsewhere.
+#
+#   127.0.0.1        this machine only (default)
+#   100.112.18.30    a Tailscale address -- tailnet only, nothing else listens.
+#                    This is the tightest option for private remote access.
+#   0.0.0.0          every interface. Correct when the host is only reachable
+#                    over a private mesh; wrong on a shared network.
+#
+# The dashboard has NO AUTHENTICATION. Anything that can open a TCP connection
+# to this port can read the store -- colony positions, SAR grids, alerts. If you
+# need remote access on an untrusted network, prefer an SSH tunnel
+# (`ssh -L 8501:127.0.0.1:8501 <host>`) or `tailscale serve`, which add identity
+# and TLS, over opening a wider port.
+host = "127.0.0.1"
+
+port = 8501
+
+# Do not try to open a browser on start. A systemd unit has no display, so
+# this stays true; it only matters when running `est dashboard` by hand.
+headless = true
+
+# Cgroup ceiling for the dashboard process. Streamlit and Plotly are an order of
+# magnitude heavier than the stdlib-only daemon, which is capped separately at
+# daemon.max_rss_bytes. Measured idle usage is ~80 MiB, so this leaves ample
+# headroom for a chart-heavy session without letting a leak run unbounded.
+max_rss_bytes = 536870912
+
+# Authentication. Read this before changing `host` above.
+#
+# A dashboard bound anywhere but loopback with `enabled = false` is rejected by
+# `est config validate`. That is deliberate and it is a hard error, not a
+# warning: nothing about the rendered page would tell an operator the store was
+# readable by anyone who could reach the port.
+#
+# The intended arrangement is a reverse proxy. Caddy, nginx or Tailscale's own
+# `tailscale serve` sits in front, terminates TLS, checks the human's credential
+# on the connection, and forwards the authenticated name in a header signed with
+# a shared secret. The dashboard believes that header only when the signature
+# matches, so a host that connects directly cannot forge an identity by guessing
+# a username. The secret is read from the environment, never from this file.
+#
+#   [dashboard]
+#   host = "127.0.0.1"          # only the proxy needs to reach it
+#   [dashboard.auth]
+#   enabled = true
+#   proxy_secret_env = "EST_DASHBOARD_PROXY_SECRET"
+#
+# Then export the secret on both the proxy and this node, identically:
+#
+#   export EST_DASHBOARD_PROXY_SECRET="$(openssl rand -base64 32)"
+[dashboard.auth]
+enabled = false
+
+# Name of the environment variable holding the shared secret. Read from the
+# environment rather than the config so the secret stays out of version control
+# and out of `est config show`, exactly like the Discord webhook.
+proxy_secret_env = "EST_DASHBOARD_PROXY_SECRET"
+
+# Failed logins before the first lockout, and the length of that lockout. Each
+# further failure doubles it, up to the cap -- an uncapped doubling would let an
+# attacker lock the operator out for months, which turns brute-force protection
+# into a denial-of-service tool.
+max_failures = 5
+lockout_base_seconds = 60.0
+lockout_cap_seconds = 900.0
+
+[logging]
+# DEBUG | INFO | WARNING | ERROR
+level = "INFO"
+# Rotating file size in bytes. 2 MiB x 3 backups fits a 128 MiB flash budget
+# with room to spare.
+max_bytes = 2097152
+backup_count = 3
+# Also write JSON lines to the rotating file in addition to the human-readable
+# stderr stream. Set true when something else is scraping the node.
+json_file = false
