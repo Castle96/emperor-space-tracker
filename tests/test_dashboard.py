@@ -711,3 +711,62 @@ def test_the_gate_is_a_no_op_when_auth_is_disabled(tmp_path: Path) -> None:
     )
     config = load_config(config_path, use_user_config=False)
     assert _require_auth(config) is None
+
+
+def test_a_hostile_username_cannot_inject_html() -> None:
+    """The username arrives in a request header, so it is not ours to trust.
+
+    Under Cloudflare Access it is an email address, and the proxy that sets it
+    is the only thing that can reach the app. But an ``unsafe_allow_html`` block
+    that interpolates the value unescaped turns any future path reaching this
+    code with an untrusted value into HTML injection, so escaping has to happen
+    at the point of use.
+    """
+    pytest.importorskip("streamlit")
+    from emperor_space_tracker.dashboard.app import _esc
+
+    # The classic payload, plus a quote so attribute breakout is covered too.
+    for hostile in (
+        '<script>alert(1)</script>',
+        '"><img src=x onerror=alert(1)>',
+        "a&b",
+    ):
+        out = _esc(hostile)
+        assert "<" not in out, hostile
+        assert ">" not in out, hostile
+        assert '"' not in out, hostile
+        assert "&" not in out or "&amp;" in out or "&lt;" in out, hostile
+
+    # And the values we actually expect must survive untouched.
+    assert _esc("kyle@example.com") == "kyle@example.com"
+    assert _esc("write") == "write"
+    assert _esc("proxy") == "proxy"
+
+
+def test_the_signed_in_as_block_escapes_the_username() -> None:
+    """Guard the real call site, not just the helper.
+
+    A test of ``_esc`` alone would still pass if someone interpolated the
+    username directly into the sidebar HTML again, so assert on the source.
+    """
+    source = APP.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        # f-strings carrying markup, i.e. the ones passed to
+        # unsafe_allow_html, are the ones that matter.
+        if not isinstance(node, ast.JoinedStr):
+            continue
+        literal = "".join(
+            part.value
+            for part in node.values
+            if isinstance(part, ast.Constant) and isinstance(part.value, str)
+        )
+        if "<" not in literal or "span" not in literal:
+            continue
+        for part in node.values:
+            if isinstance(part, ast.FormattedValue):
+                rendered = ast.unparse(part.value)
+                if "identity." in rendered and "_esc" not in rendered:
+                    offenders.append(f"line {node.lineno}: {rendered}")
+    assert not offenders, "unescaped identity value in raw HTML: " + "; ".join(offenders)

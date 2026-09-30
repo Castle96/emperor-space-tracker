@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1724,6 +1725,18 @@ def _request_headers() -> dict[str, str]:
     return dict(st.context.headers)
 
 
+def _esc(value: object) -> str:
+    """Escape a value for interpolation into raw HTML or markdown.
+
+    The username is not ours: it arrives in a request header from the proxy,
+    and under Cloudflare Access it is an email address. Rendering it into an
+    ``unsafe_allow_html`` block unescaped would make any future path that
+    reaches this code with an untrusted value an HTML injection, so escape at
+    the point of use rather than trusting every caller upstream.
+    """
+    return html.escape(str(value), quote=True)
+
+
 def _require_auth(config: Config) -> Any | None:
     """Resolve the caller, refusing anyone not authenticated.
 
@@ -1865,10 +1878,11 @@ def require_write(identity: Any | None) -> bool:
         return True
     if identity.can_write:
         return True
+    safe = _esc(identity.username)
     st.error(
-        f"Your dashboard account ({identity.username}) has read-only access. "
+        f"Your dashboard account ({safe}) has read-only access. "
         "Ask for the `write` role, or run `est auth set-role "
-        f"{identity.username} --role write` yourself if you administer this node."
+        f"{safe} --role write` yourself if you administer this node."
     )
     return False
 
@@ -1924,8 +1938,9 @@ def _render(store: Store, identity: Any | None = None) -> int:
             f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-default);'
             f'font-family:Share Tech Mono,monospace;font-size:10px;">'
             f'<span style="color:#555577;">SIGNED IN AS</span><br>'
-            f'<span style="color:{role_colour};">{identity.username}</span>'
-            f'<span style="color:#555577;"> · {identity.role} · {identity.source}</span></div>',
+            f'<span style="color:{role_colour};">{_esc(identity.username)}</span>'
+            f'<span style="color:#555577;"> · {_esc(identity.role)} · '
+            f"{_esc(identity.source)}</span></div>",
             unsafe_allow_html=True,
         )
 
