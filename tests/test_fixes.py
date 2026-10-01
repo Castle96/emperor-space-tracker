@@ -95,8 +95,12 @@ def test_default_polarisation_resolves_to_a_collection_that_has_it() -> None:
 
     GRD products carry only VV and VH, so this asserts the shipped default is a
     band GRD actually contains rather than one that silently reduces to nothing.
+
+    ``use_user_config=False`` because the claim is about the *shipped* default.
+    Reading the developer's ~/.config would make this assert whatever they last
+    edited, and pass or fail depending on whose machine ran it.
     """
-    config = load_config()
+    config = load_config(use_user_config=False)
     assert config.sar.polarisation.upper() == "VV"
     assert SAR_COLLECTIONS["VV"] == "COPERNICUS/S1_GRD"
 

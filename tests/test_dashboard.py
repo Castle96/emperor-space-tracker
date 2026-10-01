@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -787,10 +788,25 @@ def test_a_refused_caller_never_falls_through_to_the_success_path(
     loudly when the halt it relies on is unavailable.
     """
     pytest.importorskip("streamlit")
-    from emperor_space_tracker.config import load_config
+    from emperor_space_tracker.config import DashboardAuthConfig, load_config
     from emperor_space_tracker.dashboard import app as app_mod
 
-    config = load_config()
+    # Auth is switched ON explicitly rather than inherited from whatever config
+    # the machine happens to have. `load_config()` with no arguments reads
+    # ~/.config/emperor-space-tracker/config.toml, so on a developer workstation
+    # this test was silently testing a node with auth enabled and on CI -- where
+    # there is no such file -- it was silently testing a node with auth
+    # disabled. With auth off, `_require_auth` returns None at its first line
+    # and never reaches the refusal path at all, so the assertion below passed
+    # vacuously or failed depending on whose machine ran it.
+    #
+    # A test about a refusal path has to construct the refusal. Deriving its
+    # preconditions from ambient state means the test can pass without ever
+    # testing the thing it is named after.
+    config = load_config(use_user_config=False)
+    config.dashboard = replace(
+        config.dashboard, auth=DashboardAuthConfig(enabled=True)
+    )
 
     # A correctly signed request with no authenticated identity, which is what
     # the proxy sends when its own authentication has not run.
