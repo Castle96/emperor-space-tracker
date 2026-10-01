@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# A new push supersedes an in-flight run on the same ref. Superseded runs are
+# cancelled rather than left to finish, because a queue of stale green runs is
+# indistinguishable from a queue of green results.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.13
+
+      # --all-extras because the optional extras are load-bearing for the
+      # dashboard smoke test and the Earth Engine SAR path. A gate that only
+      # ran the daemon core would leave the extras permanently unverified,
+      # which is the same category of untested claim the suite exists to
+      # prevent. --frozen so CI resolves the committed lockfile rather than
+      # silently re-resolving a range and testing something nobody wrote down.
+      - name: Install project and extras
+        run: uv sync --all-extras --dev --frozen
+
+      # Four gates, in the order that fails fastest and cheapest.
+      #
+      #   ruff      -- seconds, no interpreter, catches style and dead imports
+      #   mypy      -- ~30 s, catches type errors across daemon and tests
+      #   doctests  -- fast, and they document the public API's contracts
+      #   pytest    -- the slow one, so it runs last
+      #
+      # The daemon's own core has zero runtime dependencies, but mypy still
+      # needs streamlit and plotly resolved for the dashboard modules, which is
+      # why this job cannot use the daemon-only sync the README recommends for
+      # a field node.
+
+      - name: ruff
+        run: uv run ruff check src tests
+
+      - name: mypy
+        run: uv run mypy
+
+      - name: doctests
+        run: uv run python -m pytest --doctest-modules src/emperor_space_tracker
+
+      - name: unit and integration tests
+        run: uv run pytest
+
+      # The README publishes a coverage table for memory, not for lines, so
+      # there is no coverage threshold enforced here. Printing it keeps the
+      # number visible in the log for anyone reviewing a change without adding
+      # a gate that would fail on an unrelated line count.
+      - name: coverage
+        if: always()
+        run: uv run pytest --cov --cov-report=term-missing | tail -30

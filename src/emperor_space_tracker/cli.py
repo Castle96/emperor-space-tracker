@@ -1154,6 +1154,13 @@ def _cmd_seed(args: argparse.Namespace, config: Config) -> int:
 
         sar_client = SarClient(client, config.sar)
         # Widen the backfill window so a season's arc is visible in the charts.
+        #
+        # `latest_acquisition` is deliberately not passed here. The revisit gate
+        # exists to stop the *poll loop* inventing acquisitions faster than a
+        # satellite can fly; an explicit backfill is a human asking for a dated
+        # history, and applying the gate would silently seed less than was asked
+        # for. The frames are still stamped synthetic, and the spacing still
+        # comes from lookback_days rather than the clock.
         original = config.sar.lookback_days
         config.sar.lookback_days = max(original, args.days)
         try:

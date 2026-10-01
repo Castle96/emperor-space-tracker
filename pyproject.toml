@@ -191,11 +191,14 @@ strict = true
 warn_unreachable = true
 disallow_any_generics = true
 files = ["src/emperor_space_tracker", "tests"]
-# The dashboard layer pulls optional third-party types that are not present in
-# the daemon environment; it is excluded from the strict gate.
+# Optional third-party types that are absent from a bare daemon install. These
+# are excluded from the strict gate because their absence is the normal case:
+# the daemon is provisioned without them on purpose. `ee` is the import name
+# `earthengine-api` actually ships; `earthengine` is the console script.
 [[tool.mypy.overrides]]
 module = [
     "emperor_space_tracker.dashboard.*",
+    "ee",
     "earthengine",
     "plotly",
     "plotly.*",

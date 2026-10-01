@@ -293,7 +293,11 @@ class PollEngine:
         if self.config.sar.enabled and colonies:
             sar_client = sar.SarClient(self.http, self.config.sar)
             try:
-                scenes, sar_health = sar_client.poll(colonies=colonies, scenes_per_colony=1)
+                scenes, sar_health = sar_client.poll(
+                    colonies=colonies,
+                    scenes_per_colony=1,
+                    latest_acquisition=self.store.latest_acquisitions() if self.store else None,
+                )
                 health.extend(sar_health)
                 if any(h.status == "down" for h in sar_health):
                     degraded.append("sar")

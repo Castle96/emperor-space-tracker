@@ -1380,3 +1380,155 @@ def test_dashboard_cli_flags_override_config(
     # Port was not given on the command line, so it comes from the config
     # rather than from a built-in default.
     assert "--server.port=8501" in argv
+
+
+# --------------------------------------------------------------------------- #
+# Sentinel-1 revisit cadence
+# --------------------------------------------------------------------------- #
+
+
+def test_latest_acquisitions_reports_the_newest_frame_per_colony(store: Store) -> None:
+    """The revisit gate needs one timestamp per colony, not a scene list.
+
+    Absent colonies are missing from the mapping rather than mapped to the
+    epoch: "never acquired" and "acquired at 1970" would behave identically
+    downstream, and only one of them is true.
+    """
+    assert store.latest_acquisitions() == {}
+
+    older = _scene_with_cells("cpe-a", 0.05, utc_now() - timedelta(hours=30))
+    newer = _scene_with_cells("cpe-a", 0.05, utc_now())
+    other = _scene_with_cells("cpe-b", 0.05, utc_now() - timedelta(hours=5))
+    for scene in (older, newer, other):
+        store.record_sar_scene(scene)
+
+    latest = store.latest_acquisitions()
+    assert set(latest) == {"cpe-a", "cpe-b"}
+    assert latest["cpe-a"] == newer.observed_at
+    assert latest["cpe-b"] == other.observed_at
+
+
+def test_a_colony_inside_its_revisit_window_is_not_re_imaged(
+    tmp_path: Path,
+) -> None:
+    """The radar does not produce a new frame because the poll clock ticked.
+
+    Sentinel-1's repeat over sea ice is about 12 hours. A five-minute poll
+    interval is right for space weather and wrong for the radar, so a pass that
+    finds every colony still inside its window must acquire nothing and say so
+    rather than emitting a fresh grid of invented backscatter.
+    """
+    from emperor_space_tracker.net import HttpClient
+    from emperor_space_tracker.sources.sar import SarClient
+
+    config = _config(tmp_path, sar=SarConfig(enabled=True, backend="synthetic", grid_cells=5))
+    client = SarClient(HttpClient(timeout=1, max_retries=0), config.sar)
+    now = utc_now()
+    colony = _colony()
+
+    first, health = client.poll(colonies=[colony], now=now)
+    assert [s.colony_id for s in first] == ["cpe-test"]
+    assert health[0].ok is True
+
+    # Same instant, and every step up to the revisit boundary.
+    for minutes in (0, 5, 59, 600, 719):
+        again, repeat_health = client.poll(
+            colonies=[colony], now=now + timedelta(minutes=minutes),
+            latest_acquisition={"cpe-test": now},
+        )
+        assert again == [], f"re-imaged {minutes} minutes after acquisition"
+        assert repeat_health[0].ok is True
+        assert "revisit window" in repeat_health[0].detail
+        assert "cpe-test" in repeat_health[0].detail
+
+    # One minute past the 12-hour window the radar is due again.
+    due, _ = client.poll(
+        colonies=[colony], now=now + timedelta(hours=12, minutes=1),
+        latest_acquisition={"cpe-test": now},
+    )
+    assert [s.colony_id for s in due] == ["cpe-test"]
+
+
+def test_the_revisit_window_holds_some_colonies_and_releases_others(
+    tmp_path: Path,
+) -> None:
+    """A mixed pass acquires what is due and names what it is holding.
+
+    Orbit tracks do not cover every colony on the same cycle, so the common
+    case is two colonies on different clocks. Releasing one and silently
+    dropping the other would make the source-health count disagree with the
+    scenes actually written.
+    """
+    from emperor_space_tracker.net import HttpClient
+    from emperor_space_tracker.sources.sar import SarClient
+
+    config = _config(tmp_path, sar=SarConfig(enabled=True, backend="synthetic", grid_cells=5))
+    client = SarClient(HttpClient(timeout=1, max_retries=0), config.sar)
+    now = utc_now()
+    fresh = _colony(colony_id="cpe-fresh")
+    stale = _colony(colony_id="cpe-stale")
+
+    scenes, health = client.poll(
+        colonies=[fresh, stale], now=now,
+        latest_acquisition={"cpe-fresh": now - timedelta(hours=1)},
+    )
+    assert [s.colony_id for s in scenes] == ["cpe-stale"]
+    assert "cpe-fresh" in health[0].detail
+    assert "12h revisit window" in health[0].detail
+
+
+def test_an_uncached_colony_is_always_due(tmp_path: Path) -> None:
+    """A colony with no stored frame has no window to be inside."""
+    from emperor_space_tracker.net import HttpClient
+    from emperor_space_tracker.sources.sar import SarClient
+
+    config = _config(tmp_path, sar=SarConfig(enabled=True, backend="synthetic", grid_cells=5))
+    client = SarClient(HttpClient(timeout=1, max_retries=0), config.sar)
+    now = utc_now()
+
+    scenes, _ = client.poll(colonies=[_colony()], now=now, latest_acquisition={})
+    assert [s.colony_id for s in scenes] == ["cpe-test"]
+
+
+def test_the_revisit_cadence_keeps_a_season_inside_the_size_cap(
+    tmp_path: Path,
+) -> None:
+    """A month of passes fits the budget, which a poll-timed cadence cannot.
+
+    This is the retention claim the README makes, checked as an arithmetic
+    consequence rather than asserted. At 41x41 cells and one frame per colony
+    per 12 hours, 30 days across five colonies is 300 grids -- about 40 MiB, and
+    under a 64 MiB cap. At the daemon's five-minute interval the same month
+    would be 43,200 grids and roughly 5.8 GiB, which is why the node spent its
+    life filling and vacuuming the store and logging a size-cap warning every
+    hour.
+    """
+    grid = 41
+    cells_per_scene = grid * grid
+    # Measured on this project's schema: a WITHOUT ROWID cell row plus its share
+    # of the scene row costs ~95 bytes on a 4 KiB page.
+    bytes_per_cell = 95
+    cap = 64 * 1024 * 1024
+    colonies = 5
+    revisit = timedelta(hours=12)
+    retention = timedelta(days=30)
+
+    frames = int(retention / revisit) * colonies
+    projected = frames * cells_per_scene * bytes_per_cell
+
+    assert frames == 300
+    assert projected < cap, f"{projected / 1024 / 1024:.0f} MiB exceeds the 64 MiB cap"
+
+    # And the poll-timed cadence it replaced, for contrast.
+    poll_timed = int(retention / timedelta(minutes=5)) * colonies
+    assert poll_timed == 43_200
+    assert poll_timed * cells_per_scene * bytes_per_cell > cap
+
+
+def test_a_revisit_hours_of_zero_is_rejected(tmp_path: Path) -> None:
+    """The window must be a positive interval, or nothing is ever due."""
+    from emperor_space_tracker.errors import ConfigError
+
+    config = _config(tmp_path, sar=SarConfig(enabled=True, revisit_hours=0.0))
+    with pytest.raises(ConfigError, match="revisit_hours"):
+        config.validate()

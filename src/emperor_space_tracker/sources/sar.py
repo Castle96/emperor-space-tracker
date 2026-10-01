@@ -674,12 +674,33 @@ class SarClient:
             )
         return True, "Google Earth Engine authenticated"
 
+    def _ages(
+        self,
+        colonies: list[Colony],
+        observed: datetime,
+        latest_acquisition: dict[str, datetime] | None,
+    ) -> list[tuple[Colony, float]]:
+        """Pair each colony with the hours since its last stored frame.
+
+        Colonies with no stored frame are omitted rather than reported as age
+        zero: they are not holding, they are simply unknown, and rounding them
+        to 0 h in an operator-facing message would read as "just acquired".
+        """
+        pairs: list[tuple[Colony, float]] = []
+        for colony in colonies:
+            last = (latest_acquisition or {}).get(colony.colony_id)
+            if last is None:
+                continue
+            pairs.append((colony, (observed - last).total_seconds() / 3600.0))
+        return pairs
+
     def poll(
         self,
         *,
         colonies: list[Colony],
         scenes_per_colony: int = 1,
         now: datetime | None = None,
+        latest_acquisition: dict[str, datetime] | None = None,
     ) -> tuple[list[SarScene], list[SourceHealth]]:
         """Fetch backscatter scenes for the fast-ice-breeding colonies given.
 
@@ -701,6 +722,14 @@ class SarClient:
         now
             Override for the acquisition timestamp, so a backfill run can be
             given a deterministic clock.
+        latest_acquisition
+            Newest stored acquisition per ``colony_id``. A colony whose last
+            frame is younger than :attr:`~emperor_space_tracker.config.SarConfig.revisit_hours`
+            is left alone and reported as not due. This is the radar's revisit
+            interval, and it is independent of the daemon's poll interval: the
+            poll loop runs five-minuteutely because space weather moves that
+            fast, and generating a fresh 41x41 grid on every pass would invent
+            144 daily observations from a sensor that flies twice.
 
         Returns
         -------
@@ -751,8 +780,39 @@ class SarClient:
         scenes: list[SarScene] = []
         started = utc_now()
 
+        # Split the in-range colonies by whether the radar is actually due over
+        # them yet. This is a sensor property, not a storage optimisation, so it
+        # applies to the GEE backend as well: asking Earth Engine for a frame
+        # that has not been acquired yet returns nothing.
+        due: list[Colony] = []
+        waiting: list[Colony] = []
+        window = timedelta(hours=self.config.revisit_hours)
+        for colony in imaged:
+            last = (latest_acquisition or {}).get(colony.colony_id)
+            if last is not None and observed - last < window:
+                waiting.append(colony)
+            else:
+                due.append(colony)
+
+        if not due:
+            ages = ", ".join(
+                f"{colony.colony_id} {age:.1f}h"
+                for colony, age in self._ages(waiting, observed, latest_acquisition)
+            )
+            return [], [
+                SourceHealth(
+                    "sar",
+                    True,
+                    0,
+                    f"revisit window {self.config.revisit_hours:g}h not elapsed; "
+                    f"holding {len(waiting)} colony(ies): {ages}",
+                    0,
+                    observed,
+                )
+            ]
+
         if backend == "gee":
-            for colony in imaged:
+            for colony in due:
                 fetched, detail = self._poll_gee(colony, scenes_per_colony, observed)
                 scenes.extend(fetched)
                 health.append(
@@ -767,7 +827,7 @@ class SarClient:
             # tells the operator nothing.
             count = max(1, scenes_per_colony)
             step_days = max(1.0, self.config.lookback_days / count)
-            for colony in imaged:
+            for colony in due:
                 for index in reversed(range(count)):
                     acquisition = observed - timedelta(days=index * step_days)
                     scenes.append(
@@ -783,12 +843,19 @@ class SarClient:
                         )
                     )
             detail = (
-                f"{len(scenes)} synthetic scene(s) across {len(imaged)} colony(ies), "
+                f"{len(scenes)} synthetic scene(s) across {len(due)} colony(ies), "
                 f"{step_days:.1f} day spacing, "
                 f"{self.config.grid_cells}x{self.config.grid_cells} cells"
             )
             if skipped:
                 detail += f"; {len(skipped)} non-fast-ice colony(ies) skipped"
+            if waiting:
+                aged = self._ages(waiting, observed, latest_acquisition)
+                held = ", ".join(f"{c.colony_id} {age:.1f}h" for c, age in aged)
+                detail += (
+                    f"; {len(waiting)} held inside the "
+                    f"{self.config.revisit_hours:g}h revisit window: {held}"
+                )
             if not available:
                 detail = f"fallback: {reason}. {detail}"
             health.append(SourceHealth("sar", True, 0, detail, len(scenes), observed))

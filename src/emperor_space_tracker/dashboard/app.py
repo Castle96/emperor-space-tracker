@@ -30,7 +30,6 @@ import hashlib
 import html
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from emperor_space_tracker.config import Config, load_config
@@ -433,7 +432,7 @@ def _sar_grid(
 def _render_colony_map(
     st: Any,
     go: Any,
-    colonies: list[dict[str, Any]],
+    colonies: list[Any],
     *,
     center_lat: float = -70.0,
     center_lon: float = 120.0,
@@ -1113,110 +1112,6 @@ def _render_colony_list(
 # ---------------------------------------------------------------------------
 
 
-assert Path(__file__).resolve().is_file()  # keep the file parseable
-
-ASSETS_DIR = Path(__file__).resolve().parents[3] / "assets" / "theme"
-
-# ---------------------------------------------------------------------------
-# Theme preview (user's two-picture combination idea)
-# ---------------------------------------------------------------------------
-
-_THEME_COMBOS: list[dict[str, Any]] = [
-    {
-        "name": "Screen blend (luminous)",
-        "file": "comp_screen.png",
-        "desc": "Screen blend of both source images. Brightest option — keeps the neon "
-        "cyan and magenta accent colors readable while adding a cinematic glow "
-        "behind the data panels.",
-    },
-    {
-        "name": "50% alpha blend (balanced)",
-        "file": "comp_blend_half.png",
-        "desc": "Even alpha blend of post.webp + theme.jpeg. Mid-tone ground that sits "
-        "between pure dark and the luminous screen blend — good when you want "
-        "the dashboard chrome to dominate but still feel the imagery.",
-    },
-    {
-        "name": "Left | right split (both intact)",
-        "file": "comp_split.png",
-        "desc": "post.webp on the left, theme.jpeg on the right, separated by a neon "
-        "cyan seam. Preserves each source's look while unifying them under one "
-        "theme. Best for showing both directions side by side.",
-    },
-    {
-        "name": "Overlay blend (deep/dramatic)",
-        "file": "comp_overlay.png",
-        "desc": "Overlay blend — deepest, most dramatic of the combinations. Keeps the "
-        "dark-navy foundation strong; neon accents on top still pop.",
-    },
-    {
-        "name": "Cockpit + data panel (framed)",
-        "file": "comp_cockpit.png",
-        "desc": "Two framed panels back to back — OrbitTrack-style cockpit (cyan border) "
-        "on the left and NASA-style data panel (magenta border) on the right, "
-        "with a bottom status bar. Choose-your-direction story.",
-    },
-    {
-        "name": "Sidebar banner",
-        "file": "comp_sidebar_banner.png",
-        "desc": "Two sources side by side in a banner format with ORBITTRACK / NASA "
-        "labels. Fits a wide strip; useful as a hero header.",
-    },
-    {
-        "name": "Vertical stack (portrait)",
-        "file": "comp_vertical_stack.png",
-        "desc": "post.webp on top, theme.jpeg below, in a tall narrow format. Matches a "
-        "sidebar or portrait slot.",
-    },
-]
-
-_MAX_WIDTH = 1000  # px cap so the combo image never blows out the layout
-
-
-def _render_theme_preview(st: Any) -> None:
-    """Render a Theme preview panel: selector + combo image + description."""
-    st.markdown(
-        '<div class="panel-header" style="margin-top:16px;">DASHBOARD THEME · '
-        "TWO PICTURES COMBINED</div>",
-        unsafe_allow_html=True,
-    )
-    names = [c["name"] for c in _THEME_COMBOS]
-    choice = st.selectbox(
-        "Which combination do you want to see?",
-        names,
-        index=0,
-        key="theme_combo",
-    )
-    entry = next(c for c in _THEME_COMBOS if c["name"] == choice)
-    combo_path = ASSETS_DIR / entry["file"]
-    if not combo_path.is_file():
-        st.warning(
-            f"theme image missing: {combo_path}\n"
-            "regenerate with:  uv run --with pillow python combine_theme.py"
-        )
-        return
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.image(
-            str(combo_path),
-            caption=entry["name"],
-            use_container_width=True,
-            clamp=True,
-            output_format="PNG",
-        )
-    with col2:
-        st.markdown(f"**file:** `{entry['file']}`")
-        st.markdown(f"**description:** {entry['desc']}")
-        size = combo_path.stat().st_size
-        st.markdown(f"**size:** {size:,} bytes ({size / 1024:.0f} KB)")
-    st.caption(
-        "Source images: "
-        "/home/kyle/Downloads/post.webp (OrbitTrack-style satellite-ops cockpit) + "
-        "/home/kyle/Downloads/theme.jpeg (NASA-style orbital-data panel). "
-        "Combined with Pillow blend modes in combine_theme.py."
-    )
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1305,22 +1200,14 @@ def _tab_overview(st: Any, store: Store) -> None:
         unsafe_allow_html=True,
     )
 
-    # Theme aesthetic (user's two-picture combination idea, adapted to dashboard chrome)
-
     st.markdown(
-        '<div class="panel-header" style="margin-top:16px;">DASHBOARD THEME</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#8888aa;line-height:1.6;">'
-        "This dashboard adopts the visual language of the two reference pictures "
-        '(<span style="color:#555588;">post.webp</span> — OrbitTrack-style satellite-ops '
-        'cockpit, cyan/navy &nbsp;+&nbsp; <span style="color:#555588;">theme.jpeg</span> — '
-        "NASA-style orbital-data panel, magenta/navy) without displaying them. "
-        "The combined palette and layout ideas are expressed through the dashboard chrome "
-        "itself: deep-navy backdrop (#101030), neon cyan (#00d4ff) and magenta (#ff00aa) "
-        "accents, glowing HUD-style panels, and the data-panel composition both images share. "
+        '<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#8888aa;line-height:1.6;'
+        'padding:10px 12px;border:1px solid var(--border-default);border-radius:4px;margin-top:16px;">'
+        "Every figure on this dashboard is a query against the same SQLite file the daemon "
+        "writes. The thresholds live in the alert rules, the surface classifications in the "
+        "SAR backend, and the presence/absence semantics in the biological source — none of "
+        "them are restated here, because a view layer that re-derives its own thresholds is "
+        "how a dashboard ends up disagreeing with the process that produced the data."
         "</div>",
         unsafe_allow_html=True,
     )

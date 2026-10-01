@@ -175,6 +175,20 @@ radius_meters = 5000
 resolution_meters = 100
 # How far back to request scenes, days.
 lookback_days = 30
+# Minimum hours between acquisitions of the SAME colony.
+#
+# This is the sensor's revisit interval, not a polling interval, and the two must
+# not be confused. Sentinel-1's repeat cycle over sea ice is roughly 12 hours
+# where the orbit track covers the site at all, and days where it does not. The
+# daemon polls every 5 minutes because space weather genuinely changes on that
+# cadence; the radar does not, and no constellation will hand this node a fresh
+# Ross Sea frame because five minutes elapsed.
+#
+# So a pass whose window is still open records no new scene and says so in the
+# SAR source-health detail. An acquisition cadence set by the poll interval
+# would fabricate 144 daily observations from a sensor that flies twice, which
+# is not more data -- it is a trend line built from invented samples.
+revisit_hours = 12.0
 # Grid edge in cells. 41 -> 4.1 km span at 100 m posting.
 grid_cells = 41
 # Synthetic backscatter is seeded from the site name so that a node always

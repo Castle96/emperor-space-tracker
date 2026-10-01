@@ -1123,6 +1123,31 @@ class Store:
             for row in self.conn.execute(sql, params)
         ]
 
+    def latest_acquisitions(self) -> dict[str, datetime]:
+        """Return the newest acquisition timestamp per ``colony_id``.
+
+        Returns
+        -------
+        dict[str, datetime]
+            Maps ``colony_id`` to the most recent stored frame. Colonies with
+            no scenes are absent rather than mapped to a sentinel, so a caller
+            cannot mistake "never acquired" for "acquired at the epoch".
+
+        Examples
+        --------
+        >>> store = Store(":memory:")
+        >>> store.latest_acquisitions()
+        {}
+        >>> store.close()
+        """
+        return {
+            row["colony_id"]: from_micros(row["observed_at"])
+            for row in self.conn.execute(
+                "SELECT colony_id, MAX(observed_at) AS observed_at FROM sar_scenes "
+                "GROUP BY colony_id"
+            )
+        }
+
     def sar_matrix(self, scene_id: str) -> list[FastIceCell]:
         """Return the backscatter grid for one scene, row-major.
 

@@ -115,14 +115,25 @@ that need them, never by the systemd unit.
    fall out of step with a taxonomic change.
 
 3. **SAR.** If fast-ice-breeding colonies are in range and the SAR backend is
-   available, the SAR client produces one scene per colony. Land-nesting
-   colonies are skipped and reported as skipped in the source-health detail. The synthetic backend runs a
+   available, the SAR client produces one scene per colony **whose revisit
+   window has elapsed**. Land-nesting colonies are skipped and reported as
+   skipped in the source-health detail. The synthetic backend runs a
    physics-based simulator (consolidated-ice baseline, orographic wind
-   roughening, pressure ridges, a chamfer-distance lead network, seasonal breakup
-   model). The GEE backend filters `COPERNICUS/S1_GRD` or `COPERNICUS/S1_RAW`
-   by colony footprint, date and orbit pass, then reduces each scene to a
+   roughening, pressure ridges, a chamfer-distance lead network, seasonal
+   breakup model) — see [docs/sar-simulator.md](docs/sar-simulator.md). The
+   GEE backend filters `COPERNICUS/S1_GRD` or `COPERNICUS/S1_RAW` by colony
+   footprint, date and orbit pass, then reduces each scene to a
    `grid_cells × grid_cells` sigma0 matrix with `reduceRegion`. The configured
    polarisation selects the collection: VV/VH read GRD, HH/HV read RAW.
+
+   **The acquisition cadence is the sensor's, not the daemon's.** Space weather
+   genuinely changes every five minutes and this daemon polls that often. SAR
+   does not: Sentinel-1's repeat over sea ice is roughly 12 hours where the orbit
+   covers the site and days where it does not. A pass that finds every colony
+   still inside `sar.revisit_hours` acquires nothing and says so in the source
+   health. Tying acquisitions to the poll interval would manufacture 144 daily
+   observations from a sensor that flies twice — which is not more data, it is a
+   trend line built from invented samples.
 
 4. **Persist.** Each write path commits independently inside the store: space
    weather snapshot (with component tables), colonies (upsert), SAR scenes and
@@ -149,6 +160,25 @@ The store never grows without bound. An hourly prune removes rows older than
 rows, children before parents) until the on-disk size is under `paths.max_db_mib`.
 `VACUUM` runs only when the freelist ratio crosses a threshold, because a full
 rewrite on flash every prune would consume the node's write endurance.
+
+The size cap is a backstop, not the retention policy, and it should never be the
+binding constraint. The retention arithmetic has to close on its own:
+
+| Term | Value |
+| --- | --- |
+| Cells per scene | 41 × 41 = 1,681 |
+| Bytes per cell row | ~95 |
+| Frames per colony per day | 2 (12 h revisit) |
+| Colonies in range | 5 |
+| Retention | 30 days → 300 frames |
+| **Projected** | **~40 MiB, under the 64 MiB cap** |
+
+At a five-minute acquisition cadence the same month would be 43,200 frames and
+roughly 5.8 GiB, which fills a 64 MiB cap every couple of hours and turns the
+node into a prune-and-vacuum loop that logs a size-cap warning hourly. That is
+what the revisit gate prevents.
+`test_the_revisit_cadence_keeps_a_season_inside_the_size_cap` asserts the
+arithmetic rather than the symptom.
 
 Timestamps are integer microseconds since the Unix epoch. That is compact,
 sorts correctly with plain B-tree comparison, converts back exactly, and avoids
@@ -379,10 +409,15 @@ cooldown and hysteresis gates, the daemon exit codes, and the Discord retry
 ladder.
 
 Ruff, strict mypy, the unit tests and the doctests are all expected to pass
-before a change lands. The dashboard is covered by a smoke test that executes
-the Streamlit script through `AppTest`, because an HTTP 200 from the Streamlit
-server proves nothing: it serves its shell on every request and only runs the
-script once a browser connects over a websocket.
+before a change lands, and `.github/workflows/ci.yml` runs all four on every
+push. The dashboard is covered by a smoke test that executes the Streamlit
+script through `AppTest`, because an HTTP 200 from the Streamlit server proves
+nothing: it serves its shell on every request and only runs the script once a
+browser connects over a websocket.
+
+CI installs `--all-extras` rather than the daemon-only set a field node uses,
+because the optional paths are exactly the ones that would otherwise never be
+tested by anyone.
 
 ## Known limits
 

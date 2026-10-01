@@ -255,6 +255,7 @@ class SarConfig:
     radius_meters: int = 5000
     resolution_meters: int = 100
     lookback_days: int = 30
+    revisit_hours: float = 12.0
     grid_cells: int = 41
     synthetic_seed: int = 0
     polynya_window_scenes: int = 4
@@ -486,6 +487,7 @@ class Config:
         _check("sar.radius_meters", self.sar.radius_meters, 100.0, 100_000.0, problems)
         _check("sar.resolution_meters", self.sar.resolution_meters, 10.0, 1000.0, problems)
         _check("sar.lookback_days", self.sar.lookback_days, 1.0, 3650.0, problems)
+        _check("sar.revisit_hours", self.sar.revisit_hours, 1.0, 336.0, problems)
         if self.sar.grid_cells % 2 != 1:
             problems.append("sar.grid_cells must be odd so the grid is centred on the colony")
         if not 5 <= self.sar.grid_cells <= 501:
@@ -633,7 +635,8 @@ class Config:
             f"backend={self.sar.backend} "
             f"pol={self.sar.polarisation.upper()}"
             f"({SAR_COLLECTIONS.get(self.sar.polarisation.upper(), 'n/a').split('/')[-1]}) "
-            f"grid={self.sar.grid_cells}x{self.sar.grid_cells}@{self.sar.resolution_meters:g}m",
+            f"grid={self.sar.grid_cells}x{self.sar.grid_cells}@{self.sar.resolution_meters:g}m "
+            f"revisit={self.sar.revisit_hours:g}h",
             f"colonies        : {self.colonies.species}, "
             f"max {self.colonies.max_colonies} within {self.colonies.max_distance_km:g} km",
             f"alerts          : {'on' if self.alerts.enabled else 'off'} "
