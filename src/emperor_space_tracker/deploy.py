@@ -209,7 +209,7 @@ def render_unit(
 
 [Unit]
 Description=Emperor Space Tracker - Antarctic fast-ice and space weather monitoring node
-Documentation=https://github.com/kcastle96/emperor-space-tracker
+Documentation=https://github.com/Castle96/emperor-space-tracker
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
@@ -393,7 +393,7 @@ def render_dashboard_unit(
 
 [Unit]
 Description=Emperor Space Tracker - dashboard
-Documentation=https://github.com/kcastle96/emperor-space-tracker
+Documentation=https://github.com/Castle96/emperor-space-tracker
 After=network-online.target {UNIT_NAME}
 Wants=network-online.target
 # Only useful once the collector has created the schema, so start it after

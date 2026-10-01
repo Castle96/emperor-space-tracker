@@ -57,8 +57,8 @@ emperor-space-tracker = "emperor_space_tracker.cli:main"
 est = "emperor_space_tracker.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/kcastle96/emperor-space-tracker"
-Issues = "https://github.com/kcastle96/emperor-space-tracker/issues"
+Homepage = "https://github.com/Castle96/emperor-space-tracker"
+Issues = "https://github.com/Castle96/emperor-space-tracker/issues"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]

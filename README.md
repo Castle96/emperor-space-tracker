@@ -236,7 +236,7 @@ and `est --help` keep working on a headless node that has no Streamlit at all.
 ## Install
 
 ```sh
-git clone https://github.com/kcastle96/emperor-space-tracker
+git clone https://github.com/Castle96/emperor-space-tracker
 cd emperor-space-tracker
 uv sync                      # daemon only
 uv sync --extra dashboard    # add the web UI
