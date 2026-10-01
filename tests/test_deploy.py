@@ -309,6 +309,53 @@ def test_a_disabled_auth_dashboard_unit_warns_loudly() -> None:
     assert "authentication is DISABLED" in unit_text
 
 
+def test_a_disabled_auth_unit_makes_no_claim_about_a_missing_secret() -> None:
+    """An auth-off unit must not assert a fail-closed guarantee it lacks.
+
+    This one shipped the "if the file is absent the service still starts, and
+    the dashboard refuses every caller" paragraph unconditionally. With auth off
+    there is no secret to be missing and nothing to refuse, so an operator
+    reading the generated unit was told their unauthenticated dashboard fails
+    closed. It does not. Shipping a reassuring sentence that does not hold is
+    worse than shipping no sentence.
+    """
+    unit_text = render_dashboard_unit(
+        venv_python=Path("/opt/venv/bin/python"),
+        config_path=None,
+        memory_max_bytes=512 * 1024 * 1024,
+        host="127.0.0.1",
+        port=8501,
+        state_dir=Path("/s"),
+        auth_enabled=False,
+    )
+    assert "EnvironmentFile" not in unit_text
+    assert "fail-closed" not in unit_text
+    assert "refuses every caller" not in unit_text
+
+
+def test_the_auth_secret_paragraph_appears_only_when_auth_is_on() -> None:
+    """Both halves of the invariant, so the fix cannot be undone one-sidedly.
+
+    Dropping the paragraph while auth is on would remove the only instruction
+    telling an operator where the secret has to live, and the service would
+    start with no credential and refuse everyone with no explanation.
+    """
+    def render(auth_enabled: bool) -> str:
+        return render_dashboard_unit(
+            venv_python=Path("/opt/venv/bin/python"),
+            config_path=None,
+            memory_max_bytes=512 * 1024 * 1024,
+            host="127.0.0.1",
+            port=8501,
+            state_dir=Path("/s"),
+            auth_enabled=auth_enabled,
+            auth_secret_env="MY_SECRET_VAR",
+        )
+
+    assert "EnvironmentFile=-" in render(True)
+    assert "EnvironmentFile=-" not in render(False)
+
+
 def test_an_enabled_auth_dashboard_unit_names_the_secret() -> None:
     """The unit points at the environment file, never at the secret's value.
 

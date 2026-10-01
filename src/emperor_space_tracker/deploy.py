@@ -381,6 +381,26 @@ def render_dashboard_unit(
             else "Bound to loopback, so only this machine can reach it."
         )
     )
+    # Only emitted when auth is on, because it is only true then.
+    #
+    # It used to be unconditional, which made a generated unit for an
+    # auth-disabled node claim that a missing secret file causes the dashboard
+    # to refuse every caller. With auth off there is no secret to be missing and
+    # nothing to refuse: the operator reads a comment asserting a fail-closed
+    # guarantee this configuration does not have, and has no way to tell from
+    # the unit that it is inapplicable. Shipping a reassuring sentence that does
+    # not hold is worse than shipping no sentence.
+    auth_env_block = (
+        f"""#
+# The shared secret arrives via an environment file rather than being written
+# into this unit, so it is not readable in `systemctl cat` output and does not
+# end up in a config backup. The leading `-` makes the file optional: if it is
+# absent the service still starts, and the dashboard refuses every caller,
+# which is the correct fail-closed outcome for a missing credential.
+EnvironmentFile=-{auth_env_file}"""
+        if auth_enabled
+        else ""
+    )
     return f"""\
 # Emperor Space Tracker -- Streamlit dashboard
 #
@@ -412,13 +432,7 @@ ExecStart="{venv_python}" -m emperor_space_tracker dashboard{config_arg}
 # {exposure}
 #
 {auth_note}
-#
-# The shared secret arrives via an environment file rather than being written
-# into this unit, so it is not readable in `systemctl cat` output and does not
-# end up in a config backup. The leading `-` makes the file optional: if it is
-# absent the service still starts, and the dashboard refuses every caller,
-# which is the correct fail-closed outcome for a missing credential.
-EnvironmentFile=-{auth_env_file}
+{auth_env_block}
 # -- restart policy -------------------------------------------------------
 Restart=always
 RestartSec=5
